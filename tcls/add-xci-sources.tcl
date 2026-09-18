@@ -54,7 +54,8 @@ foreach xci_file $xci_files {
       set xci_abs_file [file normalize $xci_file]
       set xci_src_dir [file dirname $xci_abs_file]
       set xci_name [file rootname [file tail $xci_abs_file]]
-      set project_ip_dir [file normalize $FM::VIVADO_PROJECT/$FM::VIVADO_PROJECT_NAME.srcs/sources_1/ip/$xci_name]
+      set project_dir [FM::current_vivado_project_dir]
+      set project_ip_dir [file normalize [file join $project_dir ${FM::VIVADO_PROJECT_NAME}.srcs sources_1 ip $xci_name]]
       set project_xci_file [file normalize $project_ip_dir/[file tail $xci_abs_file]]
 
       file mkdir $project_ip_dir
@@ -66,17 +67,7 @@ foreach xci_file $xci_files {
       }
 
       if {[file exists $project_xci_file]} {
-            set xci_fd [open $project_xci_file r]
-            set xci_content [read $xci_fd]
-            close $xci_fd
-
-            set xci_content [string map [list \
-                  "../../../../m1_giga_merge.gen" "../../../../$FM::VIVADO_PROJECT_NAME.gen" \
-            ] $xci_content]
-
-            set xci_fd [open $project_xci_file w]
-            puts -nonewline $xci_fd $xci_content
-            close $xci_fd
+            FM::rewrite_generated_output_paths_in_file $project_xci_file
       }
 
       read_ip $project_xci_file

@@ -8,20 +8,13 @@
 source tcls/settings.tcl
 
 # check if the project is not opened, then open it
-set list_projs [get_projects -quiet]
-if { $list_projs eq "" } {
-    open_project $FM::VIVADO_PROJECT/$FM::VIVADO_PROJECT_NAME.xpr
-}
+FM::open_vivado_project_if_needed
 
 set_param general.maxThreads 8
 set_property target_language $FM::HDL_LANGUAGE [current_project]
 
 
 reset_run impl_1
-
-#set_property "steps.place_design.args.directive" "RuntimeOptimized" [get_runs impl_1]
-#set_property "steps.route_design.args.directive" "RuntimeOptimized" [get_runs impl_1]
-set_property strategy {Performance_NetDelay_high} [get_runs impl_1]
 
 launch_runs impl_1
 wait_on_run impl_1

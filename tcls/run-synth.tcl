@@ -8,10 +8,7 @@
 source tcls/settings.tcl
 
 # check if the project is not opened, then open it
-set list_projs [get_projects -quiet]
-if { $list_projs eq "" } {
-    open_project $FM::VIVADO_PROJECT/$FM::VIVADO_PROJECT_NAME.xpr
-}
+FM::open_vivado_project_if_needed
 
 
 set_param general.maxThreads 8
@@ -33,11 +30,6 @@ FM::refresh_bd_wrapper
 
 update_ip_catalog
 update_compile_order -fileset sources_1
-
-#synth_design -rtl -name rtl_1 -verbose 
-
-#set_property STEPS.SYNTH_DESIGN.ARGS.RETIMING true [get_runs synth_1]
-set_property strategy {Flow_PerfOptimized_high} [get_runs synth_1]
 
 reset_run synth_1
 
