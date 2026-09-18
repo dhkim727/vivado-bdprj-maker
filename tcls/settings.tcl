@@ -14,7 +14,8 @@ namespace eval ::FM {
 	variable PROJECT_TCL_FILE
 	variable ROOT_PATH
 	variable HDL_LANGUAGE
-	variable OOC_MAX_JOBS
+	variable OOC_THREADS
+	variable AUTO_WRAPPER
 
 	proc print_gvars {} {
       		put $FM::VIVADO_PROJECT
@@ -24,7 +25,7 @@ namespace eval ::FM {
 		put $FM::DESIGN_NAME
 		put $FM::PROJECT_TCL_FILE
       		put $FM::HDL_LANGUAGE
-      		put $FM::OOC_MAX_JOBS
+      		put $FM::OOC_THREADS
 	}
 
 	proc normalize_path_from_root {path_value} {
@@ -193,8 +194,15 @@ namespace eval ::FM {
 		close $metadata_fd
 
 		set rewritten_content $metadata_content
-		regsub -all {(\.\./)*m1_giga_merge\.gen} $rewritten_content $replacement_gen_dir rewritten_content
-		regsub -all {(\.\./)*vivado-prj/[^"[:space:]]*\.gen} $rewritten_content $replacement_gen_dir rewritten_content
+
+		if {[string tolower [file extension $normalized_metadata_file]] eq ".xci"} {
+			set ip_name [file rootname [file tail $normalized_metadata_file]]
+			set ip_gen_dir ${replacement_gen_dir}/sources_1/ip/${ip_name}
+			regsub -all {("gen_directory": ")[^"]*(")} $rewritten_content "\\1${ip_gen_dir}\\2" rewritten_content
+			regsub -all {("OUTPUTDIR": \[ \{ "value": ")[^"]*(" \} \])} $rewritten_content "\\1${ip_gen_dir}\\2" rewritten_content
+		} else {
+			regsub -all {(\.\./)*vivado-prj/[^"[:space:]]*\.gen} $rewritten_content $replacement_gen_dir rewritten_content
+		}
 
 		if {$rewritten_content ne $metadata_content} {
 			puts "Rewriting generated output directory metadata: $normalized_metadata_file"
@@ -391,13 +399,136 @@ namespace eval ::FM {
 			if {[get_files -quiet $wrapper_file] eq ""} {
 				add_files -fileset sources_1 -norecurse $wrapper_file
 			}
-			set_property top ${FM::DESIGN_NAME}_wrapper [get_filesets sources_1]
-			update_compile_order -fileset sources_1
-			set_property top ${FM::DESIGN_NAME}_wrapper [get_filesets sources_1]
+			if {$FM::AUTO_WRAPPER != 0} {
+				set_property top ${FM::DESIGN_NAME}_wrapper [get_filesets sources_1]
+				update_compile_order -fileset sources_1
+				set_property top ${FM::DESIGN_NAME}_wrapper [get_filesets sources_1]
+			}
 		} else {
 			catch {common::send_msg_id "FM-006" "ERROR" "BD wrapper file was not created. Checked paths: [join $wrapper_candidates {, }]"}
 			exit 1
 		}
+	}
+
+	proc strip_dcp_from_project_tcl {project_tcl_file} {
+		set normalized_file [file normalize $project_tcl_file]
+		if {![file exists $normalized_file]} {
+			return
+		}
+
+		set fd [open $normalized_file r]
+		set content [read $fd]
+		close $fd
+
+		set lines [split $content \n]
+		set output_lines {}
+		set skip_until_blank 0
+
+		foreach line $lines {
+			if {$skip_until_blank} {
+				if {[string trim $line] eq ""} {
+					set skip_until_blank 0
+					lappend output_lines $line
+				}
+				continue
+			}
+
+			if {[regexp {^\s*set\s+file\s+\".*\.dcp\"\s*$} $line]} {
+				set skip_until_blank 1
+				continue
+			}
+
+			if {![regexp {^\s*#} $line] && [regexp {\.dcp} $line]} {
+				continue
+			}
+
+			lappend output_lines $line
+		}
+
+		set rewritten_content [join $output_lines \n]
+
+		regsub -all {set added_files \[add_files -fileset utils_1 \$files\]} $rewritten_content {if {[llength $files] > 0} { set added_files [add_files -fileset utils_1 $files] }} rewritten_content
+
+		if {$rewritten_content ne $content} {
+			puts "Stripping DCP references from project Tcl: $normalized_file"
+			set fd [open $normalized_file w]
+			puts -nonewline $fd $rewritten_content
+			close $fd
+		}
+	}
+
+	proc patch_project_tcl_auto_wrapper {project_tcl_file} {
+		strip_dcp_from_project_tcl $project_tcl_file
+	}
+
+	proc strip_incremental_dcp_for_export {} {
+		set synth_run [get_runs -quiet synth_1]
+		if {$synth_run eq ""} {
+			return ""
+		}
+
+		set dcp_path [get_property -quiet incremental_checkpoint $synth_run]
+		if {$dcp_path eq ""} {
+			return ""
+		}
+
+		set dcp_path [file normalize $dcp_path]
+		if {![file exists $dcp_path]} {
+			catch {set_property incremental_checkpoint "" $synth_run}
+			return ""
+		}
+
+		set repo_dcp_dir [file join $FM::ROOT_PATH srcs dcp $FM::BOARD_NAME $FM::DESIGN_NAME]
+		file mkdir $repo_dcp_dir
+		set repo_dcp_file [file join $repo_dcp_dir [file tail $dcp_path]]
+		file copy -force $dcp_path $repo_dcp_file
+		puts "Backed up incremental synthesis DCP to: $repo_dcp_file"
+
+		set utils_fileset [get_filesets -quiet utils_1]
+		if {$utils_fileset ne ""} {
+			catch {
+				set dcp_files [get_files -quiet -of_objects $utils_fileset "*.dcp"]
+				foreach dcp_file $dcp_files {
+					remove_files $dcp_file
+				}
+			}
+		}
+
+		catch {set_property incremental_checkpoint "" $synth_run}
+		puts "Cleared incremental_checkpoint from synth_1 for clean project Tcl export"
+
+		return $dcp_path
+	}
+
+	proc restore_incremental_dcp {} {
+		set repo_dcp_dir [file join $FM::ROOT_PATH srcs dcp $FM::BOARD_NAME $FM::DESIGN_NAME]
+		if {![file exists $repo_dcp_dir]} {
+			return
+		}
+
+		set dcp_files [glob -nocomplain -directory $repo_dcp_dir *.dcp]
+		if {[llength $dcp_files] == 0} {
+			return
+		}
+
+		set dcp_file [file normalize [lindex $dcp_files 0]]
+		set project_dir [FM::current_vivado_project_dir]
+		set utils_dcp_dir [file join $project_dir ${FM::VIVADO_PROJECT_NAME}.srcs utils_1 imports synth_1]
+		file mkdir $utils_dcp_dir
+		set project_dcp_file [file join $utils_dcp_dir [file tail $dcp_file]]
+		file copy -force $dcp_file $project_dcp_file
+
+		set utils_fileset [get_filesets -quiet utils_1]
+		if {$utils_fileset ne ""} {
+			catch {add_files -fileset $utils_fileset $project_dcp_file}
+		}
+
+		set synth_run [get_runs -quiet synth_1]
+		if {$synth_run ne ""} {
+			catch {set_property incremental_checkpoint $project_dcp_file $synth_run}
+		}
+
+		puts "Restored incremental synthesis DCP: $project_dcp_file"
 	}
 
 	 # Process to import xci files to the project, and generate
@@ -424,9 +555,9 @@ namespace eval ::FM {
 
 	        set ip_names {}
 	        catch {set ip_names [get_ips]}
-	        set ooc_max_jobs $FM::OOC_MAX_JOBS
-	        if {$ooc_max_jobs < 1} {
-	            set ooc_max_jobs 1
+	        set ooc_threads $FM::OOC_THREADS
+	        if {$ooc_threads < 1} {
+	            set ooc_threads 1
 	        }
 	        set active_ooc_runs {}
 	        foreach ip $ip_names {
@@ -456,11 +587,15 @@ namespace eval ::FM {
 		               if {[get_runs -quiet ${ip}_synth_1] eq ""} {
 		                 create_ip_run $ip_file
 		               }
+		               if {[get_runs -quiet ${ip}_synth_1] eq ""} {
+		                 put "Skip OOC for $ip: synthesis checkpoint is already up-to-date"
+		                 continue
+		               }
 		               # it is important to reset the synth_1 before launching the run.
 			       reset_run ${ip}_synth_1
-			       launch_run -jobs 8 ${ip}_synth_1
+			       launch_run -jobs $ooc_threads ${ip}_synth_1
 		               lappend active_ooc_runs ${ip}_synth_1
-		               if {[llength $active_ooc_runs] >= $ooc_max_jobs} {
+		               if {[llength $active_ooc_runs] >= $ooc_threads} {
 		                 foreach active_ooc_run $active_ooc_runs {
 		                   wait_on_run $active_ooc_run
 		                 }
@@ -526,7 +661,8 @@ set FM::BOARD_NAME $::env(BOARD)
 set FM::DESIGN_NAME $::env(DESIGN)
 set FM::PROJECT_TCL_FILE $::env(PROJECT_TCL_FILE)
 set FM::HDL_LANGUAGE $::env(HDL_LANGUAGE) 
-set FM::OOC_MAX_JOBS $::env(OOC_JOBS) 
+set FM::OOC_THREADS $::env(OOC_THREADS)
+set FM::AUTO_WRAPPER $::env(AUTO_WRAPPER)
 
 
 

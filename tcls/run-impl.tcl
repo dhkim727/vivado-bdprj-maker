@@ -16,10 +16,6 @@ set_property target_language $FM::HDL_LANGUAGE [current_project]
 
 reset_run impl_1
 
-#set_property "steps.place_design.args.directive" "RuntimeOptimized" [get_runs impl_1]
-#set_property "steps.route_design.args.directive" "RuntimeOptimized" [get_runs impl_1]
-set_property strategy {Performance_NetDelay_high} [get_runs impl_1]
-
 launch_runs impl_1
 wait_on_run impl_1
 

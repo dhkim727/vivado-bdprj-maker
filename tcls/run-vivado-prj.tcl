@@ -63,6 +63,10 @@ FM::add_repo_sources
 # HDL wrapper, add it to the project if needed, and make it the top module.
 FM::refresh_bd_wrapper
 
+# Restore incremental synthesis DCP from srcs/dcp/ if available, so that
+# make synth can benefit from incremental compilation.
+FM::restore_incremental_dcp
+
 update_compile_order -fileset sources_1
 
 exit

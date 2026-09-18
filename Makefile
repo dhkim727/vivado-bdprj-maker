@@ -7,19 +7,32 @@
 # implementation, bitstream generation, report generation, for target board defined
 # by the user through the $BOARD.
 # The following environment variable can be set by the user:
-BOARD			?= m1p
-DESIGN			?= system
+#BOARD			?= m1p
+#DESIGN			?= system
+
+#BOARD			?= m1p_new
+#DESIGN			?= bd_design
+
+BOARD           ?= m1
+DESIGN          ?= bd_design
+
 export VIVADO_VERSION  ?=2025.2
-# VIVADO_VERSION  ?=2020.2
 HDL_LANGUAGE    ?= VERILOG
-OOC_JOBS        ?= 20
+# DRAM 64GB PC기준으로 SWAP 공간 최소 64GB로 잡아야 OOC 시 튕기지 않음
+OOC_THREADS     ?= 8 
 # setting additional xilinx board parameters for the selected board
 ifeq ($(BOARD), m1p)
 	XILINX_PART 			 := xcku060-ffva1156-1-i
 	CLK_PERIOD_NS			 := 10
+	AUTO_WRAPPER			 := 1
+else ifeq ($(BOARD), m1p_new)
+	XILINX_PART 			 := xcku060-ffva1156-1-i
+	CLK_PERIOD_NS			 := 10
+	AUTO_WRAPPER			 := 0
 else ifeq  ($(BOARD), m1)
 	XILINX_PART 			 := xcau25p-ffvb676-2-i
 	CLK_PERIOD_NS			 := 10
+	AUTO_WRAPPER			 := 0
 else
 $(error Unknown board - please specify a supported FPGA board)
 endif
@@ -53,7 +66,8 @@ export VIVADO_PROJECT_DIR
 export PROJECT_TCL_DIR
 export PROJECT_TCL_FILE
 export HDL_LANGUAGE
-export OOC_JOBS
+export OOC_THREADS
+export AUTO_WRAPPER
 
 all:
 	$(MAKE) synth
@@ -109,5 +123,6 @@ clean:
 	@echo Clean ...
 	rm -rf *.log *.jou .Xil 
 	@cd ips && make clean
+	git clean -fdX -- srcs/bd/
        	
 ########################################################################################################

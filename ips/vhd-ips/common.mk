@@ -5,7 +5,6 @@
 all: vivado
 
 vivado:
-	mkdir -p ${PROJECT}
 	vivado -mode batch -source tcl/run-vivado.tcl
 
 

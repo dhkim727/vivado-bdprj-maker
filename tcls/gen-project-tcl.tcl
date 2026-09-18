@@ -34,6 +34,10 @@ if {$bd_file ne "" && [file exists $bd_file]} {
 FM::remove_stale_bd_wrapper_files
 FM::add_repo_sources
 
+# Back up the incremental synthesis DCP to srcs/dcp/ and remove it from the
+# project so write_project_tcl emits a clean Tcl without DCP dependencies.
+FM::strip_incremental_dcp_for_export
+
 # Export a reproducible project Tcl:
 # -use_bd_files keeps the BD as a source-controlled .bd file.
 # -no_copy_sources prevents Vivado project-local source copies.
@@ -59,7 +63,13 @@ if {[catch {write_project_tcl {*}$write_project_args} write_project_error]} {
     write_project_tcl {*}$write_project_args
 }
 
-put "Project Tcl is created as $project_tcl_file"
+ put "Project Tcl is created as $project_tcl_file"
+ 
+ FM::patch_project_tcl_auto_wrapper $project_tcl_file
 
-exit
+# Restore the incremental synthesis DCP so subsequent make synth can benefit
+# from incremental compilation.
+FM::restore_incremental_dcp
+  
+  exit
 #####################################################################################################

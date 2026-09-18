@@ -88,6 +88,14 @@ srcs/bd_old/*/*/*
 srcs/stored_ui/*/*/*
 !srcs/stored_ui/*/*/.gitkeep
 srcs/dcp/
+srcs/xci/**/*.gen/
+srcs/xci/**/hdl/
+srcs/xci/**/synth/
+srcs/xci/**/*_sim_netlist.v
+srcs/xci/**/*_sim_netlist.vhdl
+srcs/xci/**/*_sv.sv
+srcs/xci/**/*_sv.sveo
+srcs/xci/**/*.xml
 
 */*/bd/*/*.xdc
 */*/*/bd/*/*.xdc

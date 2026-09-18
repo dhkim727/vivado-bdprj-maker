@@ -1,9 +1,9 @@
-vhd*/*
-!vhd*/tcl
-!vhd*/src
-!Makefile
-!common.mk
-!*.prj
+*/*
+!/Makefile
+!/common.mk
+!*/Makefile
+!*/src/
+!*/tcl/
+!*/sim/
 *.xpr
 *.xml
-xgui/*

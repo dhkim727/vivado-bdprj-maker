@@ -4,10 +4,6 @@
 # Description: Universal Makefile for the XSMLL IPs targeting various 
 # FPGA boards including the AXIOM, GLUON and the GENESYS2 with various Vivado
 # Versions 
-
-
-
-BOARD          ?= m1p
  
 
 export VIVADO_VERSION  ?=2025.2
@@ -33,6 +29,9 @@ export FPGA_WORK_DIR
 
 
 ifeq ($(BOARD), m1p)
+	XILINX_PART 			 := xcku060-ffva1156-1-i
+	CLK_PERIOD_NS			 := 10
+else ifeq ($(BOARD), m1p_new)
 	XILINX_PART 			 := xcku060-ffva1156-1-i
 	CLK_PERIOD_NS			 := 10
 else ifeq  ($(BOARD), m1)
@@ -68,4 +67,11 @@ clean:
 	@echo Clean work-fpga 
 	@rm -rf $(FPGA_WORK_DIR)
 	@rm -f *.log *.jou *.str
+	@for ip in $(basename $(hdl_ip_files)); do \
+		ip_dir=$(VHD_IP_DIR)/$$ip; \
+		if [ -f "$$ip_dir/Makefile" ]; then \
+			echo "Cleaning IP: $$ip"; \
+			(cd "$$ip_dir" && $(MAKE) clean) || true; \
+		fi; \
+	done
 
