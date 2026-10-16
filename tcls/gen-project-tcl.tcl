@@ -26,6 +26,7 @@ if {$bd_file ne "" && [file exists $bd_file]} {
     file mkdir [file dirname $repo_bd_file]
     if {[file normalize $bd_file] ne [file normalize $repo_bd_file]} {
         file copy -force $bd_file $repo_bd_file
+        FM::rewrite_generated_output_paths_in_file $repo_bd_file
     }
 }
 
@@ -66,6 +67,7 @@ if {[catch {write_project_tcl {*}$write_project_args} write_project_error]} {
  put "Project Tcl is created as $project_tcl_file"
  
  FM::patch_project_tcl_auto_wrapper $project_tcl_file
+ FM::redirect_project_tcl_bd_path $project_tcl_file $bd_file
 
 # Restore the incremental synthesis DCP so subsequent make synth can benefit
 # from incremental compilation.

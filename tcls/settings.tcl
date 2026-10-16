@@ -180,7 +180,7 @@ namespace eval ::FM {
 		return [lsort -unique $collected_files]
 	}
 
-	proc rewrite_generated_output_paths_in_file {metadata_file} {
+	proc rewrite_generated_output_paths_in_file {metadata_file {ip_gen_subdir sources_1/ip}} {
 		set normalized_metadata_file [file normalize $metadata_file]
 		if {![file exists $normalized_metadata_file]} {
 			return
@@ -197,10 +197,13 @@ namespace eval ::FM {
 
 		if {[string tolower [file extension $normalized_metadata_file]] eq ".xci"} {
 			set ip_name [file rootname [file tail $normalized_metadata_file]]
-			set ip_gen_dir ${replacement_gen_dir}/sources_1/ip/${ip_name}
+			set ip_gen_dir ${replacement_gen_dir}/${ip_gen_subdir}/${ip_name}
 			regsub -all {("gen_directory": ")[^"]*(")} $rewritten_content "\\1${ip_gen_dir}\\2" rewritten_content
 			regsub -all {("OUTPUTDIR": \[ \{ "value": ")[^"]*(" \} \])} $rewritten_content "\\1${ip_gen_dir}\\2" rewritten_content
 		} else {
+			set bd_name [file rootname [file tail $normalized_metadata_file]]
+			set bd_gen_dir ${replacement_gen_dir}/sources_1/bd/${bd_name}
+			regsub -all {("gen_directory": ")[^"]*(")} $rewritten_content "\\1${bd_gen_dir}\\2" rewritten_content
 			regsub -all {(\.\./)*vivado-prj/[^"[:space:]]*\.gen} $rewritten_content $replacement_gen_dir rewritten_content
 		}
 
@@ -213,15 +216,14 @@ namespace eval ::FM {
 	}
 
 	proc rewrite_repo_generated_output_paths {} {
-		set metadata_roots [list \
-			[file join $FM::ROOT_PATH srcs bd $FM::BOARD_NAME $FM::DESIGN_NAME] \
-			[file join $FM::ROOT_PATH srcs xci $FM::BOARD_NAME $FM::DESIGN_NAME] \
-		]
+		set bd_metadata_root [file join $FM::ROOT_PATH srcs bd $FM::BOARD_NAME $FM::DESIGN_NAME]
+		foreach metadata_file [FM::collect_project_metadata_files_recursive $bd_metadata_root] {
+			FM::rewrite_generated_output_paths_in_file $metadata_file sources_1/bd/${FM::DESIGN_NAME}/ip
+		}
 
-		foreach metadata_root $metadata_roots {
-			foreach metadata_file [FM::collect_project_metadata_files_recursive $metadata_root] {
-				FM::rewrite_generated_output_paths_in_file $metadata_file
-			}
+		set xci_metadata_root [file join $FM::ROOT_PATH srcs xci $FM::BOARD_NAME $FM::DESIGN_NAME]
+		foreach metadata_file [FM::collect_project_metadata_files_recursive $xci_metadata_root] {
+			FM::rewrite_generated_output_paths_in_file $metadata_file
 		}
 	}
 
@@ -465,6 +467,30 @@ namespace eval ::FM {
 		strip_dcp_from_project_tcl $project_tcl_file
 	}
 
+	proc redirect_project_tcl_bd_path {project_tcl_file bd_file} {
+		set normalized_file [file normalize $project_tcl_file]
+		set repo_bd_file [file join $FM::ROOT_PATH srcs bd $FM::BOARD_NAME $FM::DESIGN_NAME ${FM::DESIGN_NAME}.bd]
+		if {![file exists $normalized_file] || $bd_file eq "" || [file normalize $bd_file] eq [file normalize $repo_bd_file]} {
+			return
+		}
+
+		set old_rel [FM::relative_path $FM::ROOT_PATH $bd_file]
+		set new_rel [FM::relative_path $FM::ROOT_PATH $repo_bd_file]
+
+		set fd [open $normalized_file r]
+		set content [read $fd]
+		close $fd
+
+		set rewritten_content [string map [list $old_rel $new_rel] $content]
+
+		if {$rewritten_content ne $content} {
+			puts "Redirecting BD path in project Tcl to repository BD: $new_rel"
+			set fd [open $normalized_file w]
+			puts -nonewline $fd $rewritten_content
+			close $fd
+		}
+	}
+
 	proc strip_incremental_dcp_for_export {} {
 		set synth_run [get_runs -quiet synth_1]
 		if {$synth_run eq ""} {
@@ -540,7 +566,6 @@ namespace eval ::FM {
 	proc run_ooc_ips {} {
 	    
 	    set bd_file [FM::find_bd_file]
-	    set project_dir [FM::current_vivado_project_dir]
 	    if {$bd_file ne "" && [file exists $bd_file]} {
 	        update_compile_order -fileset sources_1
 
@@ -565,20 +590,13 @@ namespace eval ::FM {
 	        }
 	        set active_ooc_runs {}
 	        foreach ip $ip_names {
-		           ## gets IPs name as they are instantiated, and the corresponding *.xci files are generated.
-		           set ip_xci [file join $project_dir ${FM::VIVADO_PROJECT_NAME}.srcs sources_1 bd $FM::DESIGN_NAME ip ${ip} ${ip}.xci]
+		           set ip_xci [get_property -quiet IP_FILE [get_ips -quiet $ip]]
 		           set ip_file ""
-		           if {[file exists $ip_xci]} {
-		             set ip_file [get_files -quiet -of_objects [get_filesets sources_1] $ip_xci]
+		           if {$ip_xci ne ""} {
+		             set ip_file [get_files -quiet $ip_xci]
 		             if {$ip_file eq ""} {
-		               set ip_file [get_files -quiet $ip_xci]
+		               set ip_file [get_files -quiet -all $ip_xci]
 		             }
-		             if {$ip_file eq ""} {
-		               read_ip $ip_xci
-		               set ip_file [get_files -quiet $ip_xci]
-		             }
-		           } else {
-		             set ip_file [get_files -quiet -of_objects [get_filesets sources_1] *${ip}.xci]
 		           }
 
 		             if {$ip_file eq ""} {
@@ -615,26 +633,18 @@ namespace eval ::FM {
 	}
 
 	proc read_xci {} {
-	                set bd_file [FM::find_bd_file]
-	                set project_dir [FM::current_vivado_project_dir]
-	                if {$bd_file ne ""} {
-                        update_compile_order -fileset sources_1
-                        set ip_names {}
-                        catch {set ip_names [get_ips]}
-                        foreach ip $ip_names {
-                                set ip_xci [file join $project_dir ${FM::VIVADO_PROJECT_NAME}.srcs sources_1 bd $FM::DESIGN_NAME ip ${ip} ${ip}.xci]
-                                if {[file exists $ip_xci]} {
-                                        put ${ip}
-                                        read_ip $ip_xci
-                                 } else {
-                                         set ip_file [get_files -quiet -of_objects [get_filesets sources_1] *${ip}.xci]
-                                         if {$ip_file ne ""} {
-                                                 put ${ip}
-                                         }
-                                }
-                        }
-                }
-        }
+		update_compile_order -fileset sources_1
+		set ip_names {}
+		catch {set ip_names [get_ips]}
+		foreach ip $ip_names {
+			set ip_xci [get_property -quiet IP_FILE [get_ips -quiet $ip]]
+			if {$ip_xci ne "" && [file exists $ip_xci]} {
+				puts "IP: $ip ($ip_xci)"
+			} else {
+				catch {common::send_msg_id "FM-004" "WARNING" "IP file not found for $ip: $ip_xci"}
+			}
+		}
+	}
 
 
 

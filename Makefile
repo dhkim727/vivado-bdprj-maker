@@ -124,5 +124,6 @@ clean:
 	rm -rf *.log *.jou .Xil 
 	@cd ips && make clean
 	git clean -fdX -- srcs/bd/
+	git clean -fdX -- srcs/xci/
        	
 ########################################################################################################
