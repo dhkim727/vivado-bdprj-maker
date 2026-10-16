@@ -252,6 +252,10 @@ namespace eval ::FM {
 			source [file join $FM::ROOT_PATH tcls add-rtl-sources.tcl]
 		}
 
+		if {[file exists [file join $FM::ROOT_PATH tcls add-sim-sources.tcl]]} {
+			source [file join $FM::ROOT_PATH tcls add-sim-sources.tcl]
+		}
+
 		update_compile_order -fileset sources_1
 		cd $old_pwd
 	}
