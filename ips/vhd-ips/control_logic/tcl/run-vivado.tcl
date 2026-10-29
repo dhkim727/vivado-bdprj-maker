@@ -69,6 +69,7 @@ ipx::add_file ../../logo.png [ipx::get_file_groups xilinx_utilityxitfiles -of_ob
 set_property type image [ipx::get_files ../../logo.png -of_objects [ipx::get_file_groups xilinx_utilityxitfiles -of_objects $core]]
 set_property type LOGO [ipx::get_files ../../logo.png -of_objects [ipx::get_file_groups xilinx_utilityxitfiles -of_objects $core]]
 
+set_property core_revision [clock seconds] $core
 ipx::create_xgui_files $core
 ipx::update_checksums $core
 ipx::save_core $core

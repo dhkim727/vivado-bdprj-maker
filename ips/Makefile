@@ -57,7 +57,8 @@ all: $(hdl_ips)
 #	@cp $(HLS_IP_DIR)/$(basename $(@F))/$(basename $(@F))/rtl/impl/ip/hdl/vhdl/$(@F:hls_%=%) $@ 
 
 
-$(FPGA_WORK_DIR)/%.vhd $(FPGA_WORK_DIR)/%.v $(FPGA_WORK_DIR)/%.sv:
+.SECONDEXPANSION:
+$(FPGA_WORK_DIR)/%.vhd $(FPGA_WORK_DIR)/%.v $(FPGA_WORK_DIR)/%.sv: $$(wildcard $(VHD_IP_DIR)/$$*/src/*) $(VHD_IP_DIR)/$$*/tcl/run-vivado.tcl
 	mkdir -p $(FPGA_WORK_DIR)
 	@echo Generating $(@F) with Vivado Version $(VIVADO_VERSION)
 	@cd $(VHD_IP_DIR)/$(basename $(@F)) && make clean && make BOARD=$(BOARD) XILINX_PART=$(XILINX_PART) CLK_PERIOD_NS=$(CLK_PERIOD_NS) VIVADO_VERSION=$(VIVADO_VERSION) HDL_SOURCE=$(@F)
